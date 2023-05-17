@@ -4,7 +4,7 @@ pub mod xsk233;
 
 use subtle::{Choice, ConditionallyNegatable, ConditionallySelectable, ConstantTimeEq};
 
-trait Point:
+pub trait Point:
     core::fmt::Debug
     + Clone
     + ConstantTimeEq
