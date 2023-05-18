@@ -34,16 +34,17 @@ pub trait Point:
     //   well, rejection sampling never is
     // it is not really injective
     // it may even loop forever if you are very unlucky
-    fn map_to_curve(data: &[u8; 30]) -> Self {
-        let mut data: [u8; 30] = data.clone();
+    fn map_uniform_bytes_to_curve(data: &[u8; 30]) -> Self {
         let mut out = Self::default();
         let mut ctr = 0u8;
         let mut is_valid: bool = false;
+        let mut data: [u8; 30] = data.clone();
+        data[29] &= 1;
 
         while !is_valid {
-            data[0] = data[0] ^ ctr;
+            data[0] ^= ctr;
             is_valid = out.decode(&data).into();
-            data[0] = data[0] ^ ctr;
+            data[0] ^= ctr;
             ctr += 1;
         }
 
@@ -65,4 +66,23 @@ fn to_choice(val: u32) -> Choice {
 fn from_choice(choice: Choice) -> u32 {
     let zero_or_one = choice.unwrap_u8() as u32;
     zero_or_one.wrapping_neg()
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha8Rng;
+
+    use crate::Point;
+
+    #[test]
+    fn map_to_curve_100k_elements() {
+        let mut buf = [0u8; 30];
+        let mut rng = ChaCha8Rng::from_seed([23u8; 32]);
+
+        for _ in 0..100_000 {
+            rng.fill(&mut buf);
+            crate::xsk233::Xsk233Point::map_uniform_bytes_to_curve(&buf);
+        }
+    }
 }

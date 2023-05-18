@@ -1,6 +1,6 @@
 [package]
 name = "xs233"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = [ "Jan Winkelmann (keks)" ]
 description = "xs233 binary elliptic curves. uses FFI bindings to c-xs233"
