@@ -1,7 +1,7 @@
 use crate::{from_choice, scalar::Scalar, to_choice, Point};
 use subtle::{Choice, ConditionallyNegatable, ConditionallySelectable, ConstantTimeEq};
 
-#[derive(Eq, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Xsk233Point([u64; 16]);
 
 impl Xsk233Point {
@@ -14,10 +14,50 @@ impl Xsk233Point {
     }
 }
 
+crate::impl_ops!(Xsk233Point);
+
+// impl Xsk233Point {
+//     // this is a janky way to do it and it might not be very good actually
+//     // it for sure isn't constant time
+//     //   well, rejection sampling never is
+//     // it is not really injective
+//     // it may even loop forever if you are very unlucky
+//     pub fn map_uniform_bytes_to_curve<P: Point>(data: &[u8; 30]) -> Self {
+//         let mut out = Self::default();
+//         let mut ctr = 0u8;
+//         let mut is_valid: bool = false;
+//         let mut data = data.clone();
+//
+//         // this works for the two points in this crate but is not truly generic
+//         data[30 - 1] &= 1;
+//
+//         while !is_valid {
+//             data[0] ^= ctr;
+//             is_valid = out.decode(&data).into();
+//             data[0] ^= ctr;
+//             ctr += 1;
+//         }
+//
+//         out
+//     }
+// }
+
 impl Point for Xsk233Point {
+    type EncodedPoint = [u8; 30];
+
     fn add(&mut self, lhs: &Self, rhs: &Self) {
         unsafe {
             xs233_sys::xsk233_add(self.as_mut_xskpoint(), lhs.as_xskpoint(), rhs.as_xskpoint());
+        }
+    }
+
+    fn add_assign(&mut self, rhs: &Self) {
+        unsafe {
+            xs233_sys::xsk233_add(
+                self.as_mut_xskpoint(),
+                self.as_xskpoint(),
+                rhs.as_xskpoint(),
+            );
         }
     }
 
@@ -27,9 +67,25 @@ impl Point for Xsk233Point {
         }
     }
 
+    fn sub_assign(&mut self, rhs: &Self) {
+        unsafe {
+            xs233_sys::xsk233_sub(
+                self.as_mut_xskpoint(),
+                self.as_xskpoint(),
+                rhs.as_xskpoint(),
+            );
+        }
+    }
+
     fn neg(&mut self, point: &Self) {
         unsafe {
             xs233_sys::xsk233_neg(self.as_mut_xskpoint(), point.as_xskpoint());
+        }
+    }
+
+    fn neg_inplace(&mut self) {
+        unsafe {
+            xs233_sys::xsk233_neg(self.as_mut_xskpoint(), self.as_xskpoint());
         }
     }
 
@@ -39,17 +95,40 @@ impl Point for Xsk233Point {
         }
     }
 
+    fn double_inplace(&mut self) {
+        unsafe {
+            xs233_sys::xsk233_double(self.as_mut_xskpoint(), self.as_xskpoint());
+        }
+    }
+
     fn xdouble(&mut self, point: &Self, n: u32) {
         unsafe {
             xs233_sys::xsk233_xdouble(self.as_mut_xskpoint(), point.as_xskpoint(), n);
         }
     }
 
-    fn mul(&mut self, point: &Self, scalar: &crate::scalar::Scalar) {
+    fn xdouble_inplace(&mut self, n: u32) {
+        unsafe {
+            xs233_sys::xsk233_xdouble(self.as_mut_xskpoint(), self.as_xskpoint(), n);
+        }
+    }
+
+    fn mul<const N: usize>(&mut self, point: &Self, scalar: &crate::scalar::Scalar<N>) {
         unsafe {
             xs233_sys::xsk233_mul_frob(
                 self.as_mut_xskpoint(),
                 point.as_xskpoint(),
+                scalar.as_void_ptr(),
+                scalar.len(),
+            );
+        }
+    }
+
+    fn mul_inplace<const N: usize>(&mut self, scalar: &crate::scalar::Scalar<N>) {
+        unsafe {
+            xs233_sys::xsk233_mul_frob(
+                self.as_mut_xskpoint(),
+                self.as_xskpoint(),
                 scalar.as_void_ptr(),
                 scalar.len(),
             );
@@ -72,7 +151,7 @@ impl Point for Xsk233Point {
         }
     }
 
-    fn mulgen(scalar: &Scalar) -> Self {
+    fn mulgen<const N: usize>(scalar: &Scalar<N>) -> Self {
         let mut out = Self::neutral().clone();
 
         unsafe {
@@ -102,12 +181,6 @@ impl Point for Xsk233Point {
 impl Default for Xsk233Point {
     fn default() -> Self {
         Xsk233Point([0u64; 16])
-    }
-}
-
-impl PartialEq for Xsk233Point {
-    fn eq(&self, other: &Self) -> bool {
-        unsafe { xs233_sys::xsk233_equals(self.as_xskpoint(), other.as_xskpoint()) == 0xffffffff }
     }
 }
 
@@ -534,9 +607,105 @@ mod tests {
 
             assert_eq!(mul_point, mulgen_point);
 
-            // pornin's c library also tests whether this works for shorter scalars, but we
-            // currently don't have shorter scalars, so we can't do that. maybe we could put that
-            // on the roadmap though.
+            // this is a lot less cumbersome in pornin's c libarary since he doesn't
+            // treat these as distinct types, but such is the life of a rust hacker.
+            let scalar01: Scalar<01> = Scalar::new(buf[..01].try_into().unwrap());
+            let scalar02: Scalar<02> = Scalar::new(buf[..02].try_into().unwrap());
+            let scalar03: Scalar<03> = Scalar::new(buf[..03].try_into().unwrap());
+            let scalar04: Scalar<04> = Scalar::new(buf[..04].try_into().unwrap());
+            let scalar05: Scalar<05> = Scalar::new(buf[..05].try_into().unwrap());
+            let scalar06: Scalar<06> = Scalar::new(buf[..06].try_into().unwrap());
+            let scalar07: Scalar<07> = Scalar::new(buf[..07].try_into().unwrap());
+            let scalar08: Scalar<08> = Scalar::new(buf[..08].try_into().unwrap());
+            let scalar09: Scalar<09> = Scalar::new(buf[..09].try_into().unwrap());
+            let scalar10: Scalar<10> = Scalar::new(buf[..10].try_into().unwrap());
+            let scalar12: Scalar<11> = Scalar::new(buf[..11].try_into().unwrap());
+            let scalar11: Scalar<12> = Scalar::new(buf[..12].try_into().unwrap());
+            let scalar13: Scalar<13> = Scalar::new(buf[..13].try_into().unwrap());
+            let scalar14: Scalar<14> = Scalar::new(buf[..14].try_into().unwrap());
+            let scalar15: Scalar<15> = Scalar::new(buf[..15].try_into().unwrap());
+            let scalar16: Scalar<16> = Scalar::new(buf[..16].try_into().unwrap());
+            let scalar17: Scalar<17> = Scalar::new(buf[..17].try_into().unwrap());
+            let scalar18: Scalar<18> = Scalar::new(buf[..18].try_into().unwrap());
+            let scalar19: Scalar<19> = Scalar::new(buf[..19].try_into().unwrap());
+            let scalar20: Scalar<20> = Scalar::new(buf[..20].try_into().unwrap());
+            let scalar21: Scalar<21> = Scalar::new(buf[..21].try_into().unwrap());
+            let scalar22: Scalar<22> = Scalar::new(buf[..22].try_into().unwrap());
+            let scalar23: Scalar<23> = Scalar::new(buf[..23].try_into().unwrap());
+            let scalar24: Scalar<24> = Scalar::new(buf[..24].try_into().unwrap());
+            let scalar25: Scalar<25> = Scalar::new(buf[..25].try_into().unwrap());
+            let scalar26: Scalar<26> = Scalar::new(buf[..26].try_into().unwrap());
+            let scalar27: Scalar<27> = Scalar::new(buf[..27].try_into().unwrap());
+            let scalar28: Scalar<28> = Scalar::new(buf[..28].try_into().unwrap());
+            let scalar29: Scalar<29> = Scalar::new(buf[..29].try_into().unwrap());
+
+            let mulgen_points = [
+                Xsk233Point::mulgen(&scalar01),
+                Xsk233Point::mulgen(&scalar02),
+                Xsk233Point::mulgen(&scalar03),
+                Xsk233Point::mulgen(&scalar04),
+                Xsk233Point::mulgen(&scalar05),
+                Xsk233Point::mulgen(&scalar06),
+                Xsk233Point::mulgen(&scalar07),
+                Xsk233Point::mulgen(&scalar08),
+                Xsk233Point::mulgen(&scalar09),
+                Xsk233Point::mulgen(&scalar10),
+                Xsk233Point::mulgen(&scalar11),
+                Xsk233Point::mulgen(&scalar12),
+                Xsk233Point::mulgen(&scalar13),
+                Xsk233Point::mulgen(&scalar14),
+                Xsk233Point::mulgen(&scalar15),
+                Xsk233Point::mulgen(&scalar16),
+                Xsk233Point::mulgen(&scalar17),
+                Xsk233Point::mulgen(&scalar18),
+                Xsk233Point::mulgen(&scalar19),
+                Xsk233Point::mulgen(&scalar20),
+                Xsk233Point::mulgen(&scalar21),
+                Xsk233Point::mulgen(&scalar22),
+                Xsk233Point::mulgen(&scalar23),
+                Xsk233Point::mulgen(&scalar24),
+                Xsk233Point::mulgen(&scalar25),
+                Xsk233Point::mulgen(&scalar26),
+                Xsk233Point::mulgen(&scalar27),
+                Xsk233Point::mulgen(&scalar28),
+                Xsk233Point::mulgen(&scalar29),
+            ];
+
+            let mut mul_points = vec![Xsk233Point::default(); 29];
+
+            Xsk233Point::mul(&mut mul_points[0], Xsk233Point::generator(), &scalar01);
+            Xsk233Point::mul(&mut mul_points[1], Xsk233Point::generator(), &scalar02);
+            Xsk233Point::mul(&mut mul_points[2], Xsk233Point::generator(), &scalar03);
+            Xsk233Point::mul(&mut mul_points[3], Xsk233Point::generator(), &scalar04);
+            Xsk233Point::mul(&mut mul_points[4], Xsk233Point::generator(), &scalar05);
+            Xsk233Point::mul(&mut mul_points[5], Xsk233Point::generator(), &scalar06);
+            Xsk233Point::mul(&mut mul_points[6], Xsk233Point::generator(), &scalar07);
+            Xsk233Point::mul(&mut mul_points[7], Xsk233Point::generator(), &scalar08);
+            Xsk233Point::mul(&mut mul_points[8], Xsk233Point::generator(), &scalar09);
+            Xsk233Point::mul(&mut mul_points[9], Xsk233Point::generator(), &scalar10);
+            Xsk233Point::mul(&mut mul_points[10], Xsk233Point::generator(), &scalar11);
+            Xsk233Point::mul(&mut mul_points[11], Xsk233Point::generator(), &scalar12);
+            Xsk233Point::mul(&mut mul_points[12], Xsk233Point::generator(), &scalar13);
+            Xsk233Point::mul(&mut mul_points[13], Xsk233Point::generator(), &scalar14);
+            Xsk233Point::mul(&mut mul_points[14], Xsk233Point::generator(), &scalar15);
+            Xsk233Point::mul(&mut mul_points[15], Xsk233Point::generator(), &scalar16);
+            Xsk233Point::mul(&mut mul_points[16], Xsk233Point::generator(), &scalar17);
+            Xsk233Point::mul(&mut mul_points[17], Xsk233Point::generator(), &scalar18);
+            Xsk233Point::mul(&mut mul_points[18], Xsk233Point::generator(), &scalar19);
+            Xsk233Point::mul(&mut mul_points[19], Xsk233Point::generator(), &scalar20);
+            Xsk233Point::mul(&mut mul_points[20], Xsk233Point::generator(), &scalar21);
+            Xsk233Point::mul(&mut mul_points[21], Xsk233Point::generator(), &scalar22);
+            Xsk233Point::mul(&mut mul_points[22], Xsk233Point::generator(), &scalar23);
+            Xsk233Point::mul(&mut mul_points[23], Xsk233Point::generator(), &scalar24);
+            Xsk233Point::mul(&mut mul_points[24], Xsk233Point::generator(), &scalar25);
+            Xsk233Point::mul(&mut mul_points[25], Xsk233Point::generator(), &scalar26);
+            Xsk233Point::mul(&mut mul_points[26], Xsk233Point::generator(), &scalar27);
+            Xsk233Point::mul(&mut mul_points[27], Xsk233Point::generator(), &scalar28);
+            Xsk233Point::mul(&mut mul_points[28], Xsk233Point::generator(), &scalar29);
+
+            for i in 0..29 {
+                assert_eq!(mul_points[i], mulgen_points[i]);
+            }
         }
     }
 }

@@ -5,7 +5,7 @@
 use crate::{from_choice, scalar::Scalar, to_choice, Point};
 use subtle::{Choice, ConditionallyNegatable, ConditionallySelectable, ConstantTimeEq};
 
-#[derive(Eq, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Xsb233Point([u64; 16]);
 
 impl Xsb233Point {
@@ -18,10 +18,24 @@ impl Xsb233Point {
     }
 }
 
+crate::impl_ops!(Xsb233Point);
+
 impl Point for Xsb233Point {
+    type EncodedPoint = [u8; 30];
+
     fn add(&mut self, lhs: &Self, rhs: &Self) {
         unsafe {
             xs233_sys::xsb233_add(self.as_mut_xsbpoint(), lhs.as_xsbpoint(), rhs.as_xsbpoint());
+        }
+    }
+
+    fn add_assign(&mut self, rhs: &Self) {
+        unsafe {
+            xs233_sys::xsb233_add(
+                self.as_mut_xsbpoint(),
+                self.as_xsbpoint(),
+                rhs.as_xsbpoint(),
+            );
         }
     }
 
@@ -31,9 +45,25 @@ impl Point for Xsb233Point {
         }
     }
 
+    fn sub_assign(&mut self, rhs: &Self) {
+        unsafe {
+            xs233_sys::xsb233_sub(
+                self.as_mut_xsbpoint(),
+                self.as_xsbpoint(),
+                rhs.as_xsbpoint(),
+            );
+        }
+    }
+
     fn neg(&mut self, point: &Self) {
         unsafe {
             xs233_sys::xsb233_neg(self.as_mut_xsbpoint(), point.as_xsbpoint());
+        }
+    }
+
+    fn neg_inplace(&mut self) {
+        unsafe {
+            xs233_sys::xsb233_neg(self.as_mut_xsbpoint(), self.as_xsbpoint());
         }
     }
 
@@ -43,17 +73,40 @@ impl Point for Xsb233Point {
         }
     }
 
+    fn double_inplace(&mut self) {
+        unsafe {
+            xs233_sys::xsb233_double(self.as_mut_xsbpoint(), self.as_xsbpoint());
+        }
+    }
+
     fn xdouble(&mut self, point: &Self, n: u32) {
         unsafe {
             xs233_sys::xsb233_xdouble(self.as_mut_xsbpoint(), point.as_xsbpoint(), n);
         }
     }
 
-    fn mul(&mut self, point: &Self, scalar: &Scalar) {
+    fn xdouble_inplace(&mut self, n: u32) {
+        unsafe {
+            xs233_sys::xsb233_xdouble(self.as_mut_xsbpoint(), self.as_xsbpoint(), n);
+        }
+    }
+
+    fn mul<const N: usize>(&mut self, point: &Self, scalar: &Scalar<N>) {
         unsafe {
             xs233_sys::xsb233_mul_ladder(
                 self.as_mut_xsbpoint(),
                 point.as_xsbpoint(),
+                scalar.as_void_ptr(),
+                scalar.len(),
+            );
+        }
+    }
+
+    fn mul_inplace<const N: usize>(&mut self, scalar: &Scalar<N>) {
+        unsafe {
+            xs233_sys::xsb233_mul_ladder(
+                self.as_mut_xsbpoint(),
+                self.as_xsbpoint(),
                 scalar.as_void_ptr(),
                 scalar.len(),
             );
@@ -76,7 +129,7 @@ impl Point for Xsb233Point {
         }
     }
 
-    fn mulgen(scalar: &Scalar) -> Self {
+    fn mulgen<const N: usize>(scalar: &Scalar<N>) -> Self {
         let mut out = Self::neutral().clone();
 
         unsafe {
@@ -86,14 +139,14 @@ impl Point for Xsb233Point {
         out
     }
 
-    fn decode(&mut self, repr: &[u8; 30]) -> Choice {
+    fn decode(&mut self, repr: &Self::EncodedPoint) -> Choice {
         let is_valid =
             unsafe { xs233_sys::xsb233_decode(self.as_mut_xsbpoint(), repr.as_ptr().cast()) };
 
         to_choice(is_valid)
     }
 
-    fn encode(&self, dst: &mut [u8; 30]) {
+    fn encode(&self, dst: &mut Self::EncodedPoint) {
         unsafe { xs233_sys::xsb233_encode(dst.as_mut_ptr().cast(), self.as_xsbpoint()) };
     }
 
@@ -106,12 +159,6 @@ impl Point for Xsb233Point {
 impl Default for Xsb233Point {
     fn default() -> Self {
         Xsb233Point([0u64; 16])
-    }
-}
-
-impl PartialEq for Xsb233Point {
-    fn eq(&self, other: &Self) -> bool {
-        unsafe { xs233_sys::xsb233_equals(self.as_xsbpoint(), other.as_xsbpoint()) == 0xffffffff }
     }
 }
 
@@ -535,9 +582,105 @@ mod tests {
 
             assert_eq!(mul_point, mulgen_point);
 
-            // pornin's c library also tests whether this works for shorter scalars, but we
-            // currently don't have shorter scalars, so we can't do that. maybe we could put that
-            // on the roadmap though.
+            // this is a lot less cumbersome in pornin's c libarary since he doesn't
+            // treat these as distinct types, but such is the life of a rust hacker.
+            let scalar01: Scalar<01> = Scalar::new(buf[..01].try_into().unwrap());
+            let scalar02: Scalar<02> = Scalar::new(buf[..02].try_into().unwrap());
+            let scalar03: Scalar<03> = Scalar::new(buf[..03].try_into().unwrap());
+            let scalar04: Scalar<04> = Scalar::new(buf[..04].try_into().unwrap());
+            let scalar05: Scalar<05> = Scalar::new(buf[..05].try_into().unwrap());
+            let scalar06: Scalar<06> = Scalar::new(buf[..06].try_into().unwrap());
+            let scalar07: Scalar<07> = Scalar::new(buf[..07].try_into().unwrap());
+            let scalar08: Scalar<08> = Scalar::new(buf[..08].try_into().unwrap());
+            let scalar09: Scalar<09> = Scalar::new(buf[..09].try_into().unwrap());
+            let scalar10: Scalar<10> = Scalar::new(buf[..10].try_into().unwrap());
+            let scalar12: Scalar<11> = Scalar::new(buf[..11].try_into().unwrap());
+            let scalar11: Scalar<12> = Scalar::new(buf[..12].try_into().unwrap());
+            let scalar13: Scalar<13> = Scalar::new(buf[..13].try_into().unwrap());
+            let scalar14: Scalar<14> = Scalar::new(buf[..14].try_into().unwrap());
+            let scalar15: Scalar<15> = Scalar::new(buf[..15].try_into().unwrap());
+            let scalar16: Scalar<16> = Scalar::new(buf[..16].try_into().unwrap());
+            let scalar17: Scalar<17> = Scalar::new(buf[..17].try_into().unwrap());
+            let scalar18: Scalar<18> = Scalar::new(buf[..18].try_into().unwrap());
+            let scalar19: Scalar<19> = Scalar::new(buf[..19].try_into().unwrap());
+            let scalar20: Scalar<20> = Scalar::new(buf[..20].try_into().unwrap());
+            let scalar21: Scalar<21> = Scalar::new(buf[..21].try_into().unwrap());
+            let scalar22: Scalar<22> = Scalar::new(buf[..22].try_into().unwrap());
+            let scalar23: Scalar<23> = Scalar::new(buf[..23].try_into().unwrap());
+            let scalar24: Scalar<24> = Scalar::new(buf[..24].try_into().unwrap());
+            let scalar25: Scalar<25> = Scalar::new(buf[..25].try_into().unwrap());
+            let scalar26: Scalar<26> = Scalar::new(buf[..26].try_into().unwrap());
+            let scalar27: Scalar<27> = Scalar::new(buf[..27].try_into().unwrap());
+            let scalar28: Scalar<28> = Scalar::new(buf[..28].try_into().unwrap());
+            let scalar29: Scalar<29> = Scalar::new(buf[..29].try_into().unwrap());
+
+            let mulgen_points = [
+                Xsb233Point::mulgen(&scalar01),
+                Xsb233Point::mulgen(&scalar02),
+                Xsb233Point::mulgen(&scalar03),
+                Xsb233Point::mulgen(&scalar04),
+                Xsb233Point::mulgen(&scalar05),
+                Xsb233Point::mulgen(&scalar06),
+                Xsb233Point::mulgen(&scalar07),
+                Xsb233Point::mulgen(&scalar08),
+                Xsb233Point::mulgen(&scalar09),
+                Xsb233Point::mulgen(&scalar10),
+                Xsb233Point::mulgen(&scalar11),
+                Xsb233Point::mulgen(&scalar12),
+                Xsb233Point::mulgen(&scalar13),
+                Xsb233Point::mulgen(&scalar14),
+                Xsb233Point::mulgen(&scalar15),
+                Xsb233Point::mulgen(&scalar16),
+                Xsb233Point::mulgen(&scalar17),
+                Xsb233Point::mulgen(&scalar18),
+                Xsb233Point::mulgen(&scalar19),
+                Xsb233Point::mulgen(&scalar20),
+                Xsb233Point::mulgen(&scalar21),
+                Xsb233Point::mulgen(&scalar22),
+                Xsb233Point::mulgen(&scalar23),
+                Xsb233Point::mulgen(&scalar24),
+                Xsb233Point::mulgen(&scalar25),
+                Xsb233Point::mulgen(&scalar26),
+                Xsb233Point::mulgen(&scalar27),
+                Xsb233Point::mulgen(&scalar28),
+                Xsb233Point::mulgen(&scalar29),
+            ];
+
+            let mut mul_points = vec![Xsb233Point::default(); 29];
+
+            Xsb233Point::mul(&mut mul_points[00], Xsb233Point::generator(), &scalar01);
+            Xsb233Point::mul(&mut mul_points[01], Xsb233Point::generator(), &scalar02);
+            Xsb233Point::mul(&mut mul_points[02], Xsb233Point::generator(), &scalar03);
+            Xsb233Point::mul(&mut mul_points[03], Xsb233Point::generator(), &scalar04);
+            Xsb233Point::mul(&mut mul_points[04], Xsb233Point::generator(), &scalar05);
+            Xsb233Point::mul(&mut mul_points[05], Xsb233Point::generator(), &scalar06);
+            Xsb233Point::mul(&mut mul_points[06], Xsb233Point::generator(), &scalar07);
+            Xsb233Point::mul(&mut mul_points[07], Xsb233Point::generator(), &scalar08);
+            Xsb233Point::mul(&mut mul_points[08], Xsb233Point::generator(), &scalar09);
+            Xsb233Point::mul(&mut mul_points[09], Xsb233Point::generator(), &scalar10);
+            Xsb233Point::mul(&mut mul_points[10], Xsb233Point::generator(), &scalar11);
+            Xsb233Point::mul(&mut mul_points[11], Xsb233Point::generator(), &scalar12);
+            Xsb233Point::mul(&mut mul_points[12], Xsb233Point::generator(), &scalar13);
+            Xsb233Point::mul(&mut mul_points[13], Xsb233Point::generator(), &scalar14);
+            Xsb233Point::mul(&mut mul_points[14], Xsb233Point::generator(), &scalar15);
+            Xsb233Point::mul(&mut mul_points[15], Xsb233Point::generator(), &scalar16);
+            Xsb233Point::mul(&mut mul_points[16], Xsb233Point::generator(), &scalar17);
+            Xsb233Point::mul(&mut mul_points[17], Xsb233Point::generator(), &scalar18);
+            Xsb233Point::mul(&mut mul_points[18], Xsb233Point::generator(), &scalar19);
+            Xsb233Point::mul(&mut mul_points[19], Xsb233Point::generator(), &scalar20);
+            Xsb233Point::mul(&mut mul_points[20], Xsb233Point::generator(), &scalar21);
+            Xsb233Point::mul(&mut mul_points[21], Xsb233Point::generator(), &scalar22);
+            Xsb233Point::mul(&mut mul_points[22], Xsb233Point::generator(), &scalar23);
+            Xsb233Point::mul(&mut mul_points[23], Xsb233Point::generator(), &scalar24);
+            Xsb233Point::mul(&mut mul_points[24], Xsb233Point::generator(), &scalar25);
+            Xsb233Point::mul(&mut mul_points[25], Xsb233Point::generator(), &scalar26);
+            Xsb233Point::mul(&mut mul_points[26], Xsb233Point::generator(), &scalar27);
+            Xsb233Point::mul(&mut mul_points[27], Xsb233Point::generator(), &scalar28);
+            Xsb233Point::mul(&mut mul_points[28], Xsb233Point::generator(), &scalar29);
+
+            for i in 0..29 {
+                assert_eq!(mul_points[i], mulgen_points[i]);
+            }
         }
     }
 }
